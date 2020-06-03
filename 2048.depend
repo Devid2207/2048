@@ -762,3 +762,15 @@
 	"begin_code.h"
 	"close_code.h"
 
+1591188150 source:c:\users\admin\onedrive\máy tính\devid\2048\2048.cpp
+	<iostream>
+	<vector>
+	<string>
+	<ctime>
+	<cstdlib>
+	<cmath>
+	<SDL.h>
+	<SDL_image.h>
+	<SDL_mixer.h>
+	<SDL_ttf.h>
+

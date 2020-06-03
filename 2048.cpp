@@ -15,28 +15,28 @@ using std::string;
 
 int dirRow[] = {1, 0, -1, 0};
 int dirCol[] = {0, 1, 0, -1};
-int a[] = {2, 2, 2, 4}; //Hien thi random 1 so trong mang a, 25% hien thi so 4
+int a[] = {2, 2, 2, 4};
 
 const int WINDOW_CELL_WIDTH     = 100;
 const int WINDOW_CELL_HEIGHT    = 100;
 
-const int DEFAULT_NUM_ROWS      = 4;
-const int DEFAULT_NUM_COLS      = 4;
+int DEFAULT_NUM_ROWS      = 4;
+int DEFAULT_NUM_COLS      = 4;
 const int NUM_APPEAR_FIRST     = 2;
 
 const string SCREEN_TITLE       = "2048";
 const string musicPath = "2048_sunrise.mp3";
-const string fontPath = "text3d.ttf";
-const string Lose = "Game Over!";
-const string Win = "You Win!";
+const string fontPath="text3d.ttf";
+const string Lose="Game Over!";
+const string Win="You Win!";
 
-const SDL_Color colorText = {0, 0, 0, 0}; // Black
-const SDL_Rect Result = {WINDOW_CELL_WIDTH,WINDOW_CELL_HEIGHT, 2*WINDOW_CELL_WIDTH, WINDOW_CELL_HEIGHT}; // Vi tri hien thi ket qua Lose or Win
+const SDL_Color colorText={0,0,0}; //Black
+const SDL_Color colorText1={255,255,255}; //White
 
 enum GameState {
     GAME_PLAYING,
     GAME_WON,
-    GAME_LOSE
+    GAME_LOSE,
 };
 
 typedef vector<vector<int> > CellTable;
@@ -57,6 +57,10 @@ struct Graphic {
     Mix_Music* music;
     TTF_Font* font;
     SDL_Texture *textEnd;
+    SDL_Texture *start;
+    SDL_Texture *exit;
+    SDL_Texture* startText;
+    SDL_Texture* background;
 };
 bool initGraphic(Graphic &g, int nRows, int nCols); // Khoi tao SDL, SDL_Image, SDL_mixer ,  ... Tra ve false neu khoi tao khong thanh cong
 
@@ -74,13 +78,15 @@ int log2(int n);
 
 bool canDoMove(int row, int col, int nextRow, int nextCol); // Check su di chuyen
 
-void updateGame(Game &game, const SDL_Event& event ,SDL_Rect , Graphic &g); // Cap nhat trang thai cua game sau khi co su kien event
+void updateGame(Game &game, const SDL_Event& event ,SDL_Rect& , Graphic &,bool &Check ,int &,int &); // Cap nhat trang thai cua game sau khi co su kien event
 
 void check(Game &game); // Kiem tra Win - Lose
 
 void err(const string &msg); // Hien thi cua so thong bao loi
 
-void drawEndGame(Game &game,Graphic &g ,SDL_Rect replay); // Hien thi trang thai game khi ket thuc
+void drawEndGame(Game &game,Graphic &g ,SDL_Rect replay ,SDL_Rect result); // Hien thi trang thai game khi ket thuc
+
+void drawMenuStart(Graphic & ,SDL_Rect ,SDL_Rect, SDL_Rect); // Hien thi man hinh menu
 
 int main(int argc, char *argv[]) {
     srand(time(0));
@@ -88,28 +94,54 @@ int main(int argc, char *argv[]) {
     int nRows = DEFAULT_NUM_ROWS,
         nCols = DEFAULT_NUM_COLS,
         n = NUM_APPEAR_FIRST;
+    bool checkMenuStart=true;
+    bool checkInit=false;
 
     Graphic graphic;
-    SDL_Rect replay = {WINDOW_CELL_WIDTH, 2*WINDOW_CELL_HEIGHT, 2*WINDOW_CELL_WIDTH, WINDOW_CELL_HEIGHT};
     if (!initGraphic(graphic, nRows, nCols)) {
         finalizeGraphic(graphic);
         return EXIT_FAILURE;
     }
+    SDL_Rect background = {0, 0, nRows*WINDOW_CELL_WIDTH, nCols*WINDOW_CELL_HEIGHT };
+    SDL_Rect replay={(nRows*WINDOW_CELL_WIDTH)/4, (nCols*WINDOW_CELL_HEIGHT)/2, (nRows*WINDOW_CELL_WIDTH)/2, (nCols*WINDOW_CELL_HEIGHT)/4};
+    SDL_Rect result;
+    SDL_Rect start=replay;
+    start.y=replay.y-replay.h;
+    result=start;
+    SDL_Rect exit=replay;
+    SDL_Rect starttxt={150,0, (nRows*WINDOW_CELL_WIDTH)/4, (nCols*WINDOW_CELL_HEIGHT)/4};
+    SDL_Surface *oneUse;
+    oneUse=TTF_RenderText_Solid(graphic.font,"2048",colorText1);
+    graphic.startText=SDL_CreateTextureFromSurface(graphic.renderer,oneUse);
+    SDL_FreeSurface(oneUse);
 
     Game game;
-    initGame(game, nRows, nCols, n);
 
     Mix_PlayMusic(graphic.music, -1);
 
     bool quit = false;
     while (!quit) {
-        displayGame(game, graphic);
-
-        check(game);
-        if ( game.state != GAME_PLAYING)
+        if(checkMenuStart)
         {
-            Mix_FreeMusic(graphic.music);
-            graphic.music = NULL;
+            drawMenuStart(graphic,start,exit, background);
+            SDL_RenderCopy(graphic.renderer,graphic.startText,NULL,&starttxt);
+        }
+        else
+        {
+            if(!checkInit)
+            {
+                initGame(game, nRows, nCols, n);
+                checkInit=true;
+            }
+            displayGame(game, graphic);
+            if (game.state != GAME_PLAYING ) drawEndGame(game,graphic,replay,result);
+
+            check(game);
+            if ( game.state != GAME_PLAYING)
+            {
+                Mix_FreeMusic(graphic.music);
+                graphic.music = NULL;
+            }
         }
 
         SDL_Event event;
@@ -118,10 +150,21 @@ int main(int argc, char *argv[]) {
                 quit = true;
                 break;
             }
-
-            updateGame(game, event,replay ,graphic);
+            else if(!checkMenuStart ) updateGame(game, event,replay ,graphic,checkMenuStart,nRows,nCols);
+            else
+            {
+                if(event.type==SDL_MOUSEBUTTONDOWN)
+                {
+                    int x,y;
+                    SDL_GetMouseState(&x,&y);
+                    if(checkMenuStart)
+                    {
+                        if(x >= exit.x && x <= exit.x+exit.w && y >= exit.y && y <= exit.y + exit.h) quit=true;
+                        if(x >= start.x && x <= start.x+start.w && y >= start.y && y <= start.y + start.h) {checkMenuStart=false;SDL_RenderClear(graphic.renderer);checkInit=false;}
+                    }
+                }
+            }
         }
-        if (game.state != GAME_PLAYING) drawEndGame(game,graphic,replay);
         SDL_RenderPresent(graphic.renderer);
     }
 
@@ -152,13 +195,7 @@ bool initGraphic(Graphic &g, int nRows, int nCols) {
 
     if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096) != 0)
     {
-        err("SDL_Mixer could not initialize!");
-        return false;
-    }
-
-    if (TTF_Init() != 0)
-    {
-        err("SDL_ttf could not initialize!");
+        err("SDL_Mixer could noti initialize!");
         return false;
     }
 
@@ -239,23 +276,46 @@ bool initGraphic(Graphic &g, int nRows, int nCols) {
         err("Unable to create texture ");
         return false;
     }
+    g.background = createTexture(g.renderer, "background.png");
+    if (g.background == NULL) {
+        err("Unable to create texture ");
+        return false;
+    }
     g.replayIMG = createTexture(g.renderer,"reset.png");
-    if(g.replayIMG == NULL) {
+    if(g.replayIMG == NULL){
+        err("Unable to create texture ");
+        return false;
+    }
+
+    g.exit= createTexture(g.renderer,"exit1.png");
+    if(g.exit == NULL){
+        err("Unable to create texture ");
+        return false;
+    }
+
+    g.start=createTexture(g.renderer,"start1.png");
+    if(g.start == NULL){
         err("Unable to create texture ");
         return false;
     }
 
     g.music = Mix_LoadMUS(musicPath.c_str());
-    if (g.music == NULL)
+        if (g.music == NULL)
+        {
+            err("Unable to create music ");
+            return false;
+        }
+
+    if (TTF_Init() != 0)
     {
-        err("Unable to create music ");
+        string m = SDL_GetError();
+        err(m);
         return false;
     }
-
-    g.font = TTF_OpenFont(fontPath.c_str(), 30);
-    if(g.font == NULL)
+    g.font=TTF_OpenFont(fontPath.c_str(), 30);
+    if(g.font==NULL)
     {
-         err("Unable to create font ");
+        err("Unable to create font ");
         return false;
     }
     return true;
@@ -267,6 +327,10 @@ void finalizeGraphic(Graphic &g) {
      for (int  i = 0 ; i < 12; i++) {
         SDL_DestroyTexture(g.spriteTexture[i]);
      }
+    SDL_DestroyTexture(g.background);
+    SDL_DestroyTexture(g.exit);
+    SDL_DestroyTexture(g.replayIMG);
+    SDL_DestroyTexture(g.start);
     SDL_DestroyRenderer(g.renderer);
     SDL_DestroyWindow(g.window);
     Mix_FreeMusic(g.music);
@@ -289,7 +353,6 @@ SDL_Texture* createTexture(SDL_Renderer *renderer, const string &path) {
     SDL_FreeSurface(surface);
     return texture;
 }
-
 void random(int nRows, int nCols, int n,Game &game) {
         int maxVal = nRows * nCols;
         int val = rand() % maxVal;
@@ -300,7 +363,6 @@ void random(int nRows, int nCols, int n,Game &game) {
         }
         else random(nRows, nCols, n , game);
 }
-
 void initGame(Game &game, int nRows, int nCols, int n) {
     game.cells = CellTable(nRows, vector<int>(nCols));
     for (int i = 0; i < nRows; i ++) {
@@ -312,10 +374,9 @@ void initGame(Game &game, int nRows, int nCols, int n) {
 
     game.nRows = nRows;
     game.nCols = nCols;
-    game.n = NUM_APPEAR_FIRST;
+    game.n = n;
     game.state = GAME_PLAYING;
 }
-
 void displayGame(Game &game, Graphic &graphic) {
     SDL_RenderClear(graphic.renderer);
 
@@ -348,24 +409,23 @@ int log2(int n) {
 
 bool canDoMove(Game &game, int row, int col, int nextRow, int nextCol)
 {
-    if (nextRow < 0 || nextCol < 0 || nextRow > 3 || nextCol > 3 || (game.cells[row][col] != game.cells[nextRow][nextCol] && game.cells[nextRow][nextCol] != 0))
+    if (nextRow < 0 || nextCol < 0 || nextRow > game.nRows-1 || nextCol > game.nCols-1 || (game.cells[row][col] != game.cells[nextRow][nextCol] && game.cells[nextRow][nextCol] != 0))
         return false;
     return true;
 }
-
-void updateGame(Game &game, const SDL_Event &event, SDL_Rect replay , Graphic &g) {
+void updateGame(Game &game, const SDL_Event &event, SDL_Rect &replay , Graphic &g ,bool &Check ,int &nRows,int &nCols) {
     int startRow = 0, startCol = 0, rowStep = 1, colStep = 1;
-    int direction = -1;
+    int direction=-1;
     if(event.type==SDL_KEYDOWN)
     {
         switch( event.key.keysym.sym ){
                     case SDLK_DOWN:
-                        startRow = 3;
+                        startRow = game.nRows-1;
                         rowStep = -1;
                         direction = 0;
                         break;
                     case SDLK_RIGHT:
-                        startCol = 3;
+                        startCol = game.nCols-1;
                         colStep = -1;
                         direction = 1;
                         break;
@@ -375,36 +435,38 @@ void updateGame(Game &game, const SDL_Event &event, SDL_Rect replay , Graphic &g
                     case SDLK_LEFT:
                         direction = 3;
                         break;
-                        // De hien thi trang thai Win bam so 1 ( Test )
                     case SDLK_KP_1:
-                        game.cells[0][0] = 2048;
+                        game.cells[0][0]=2048;
                         break;
                     default:
                         break;
                 }
     }
-    if(event.type == SDL_MOUSEBUTTONDOWN && game.state != GAME_PLAYING)
+
+    if(event.type==SDL_MOUSEBUTTONDOWN && game.state!=GAME_PLAYING)
         {
                 int x,y;
                 SDL_GetMouseState(&x,&y); // Lay vi tri con tro chuot click vao
                 bool checkX=false;
                 bool checkY=false;
-                if(x >= replay.x && x <= replay.x + replay.w) checkX=true;
-                if(y >= replay.y && y <= replay.y + replay.h) checkY=true;
+                if(x >=replay.x && x <= replay.x+replay.w) checkX=true;
+                if(y >=replay.y && y <= replay.y+replay.h) checkY=true;
                 if(checkX && checkY)
                 {
-                    initGame(game,DEFAULT_NUM_ROWS,DEFAULT_NUM_COLS,NUM_APPEAR_FIRST);
+                    SDL_RenderClear(g.renderer);
+                    game.state=GAME_PLAYING;
                     g.music = Mix_LoadMUS(musicPath.c_str());
                     Mix_PlayMusic(g.music, -1);
+                    Check=true;
                 }
             }
 
     bool movePossible, canAddNumber = 0;
     do {
         movePossible = 0;
-        for (int i = startRow; i >= 0 && i < 4; i += rowStep)
+        for (int i = startRow; i >= 0 && i < game.nRows; i += rowStep)
         {
-            for (int j = startCol; j >= 0 && j < 4; j += colStep)
+            for (int j = startCol; j >= 0 && j < game.nCols; j += colStep)
             {
                 int nextI = i + dirRow[direction], nextJ = j + dirCol[direction];
                 if (game.cells[i][j] != 0 && canDoMove(game, i, j, nextI, nextJ)) {
@@ -416,11 +478,11 @@ void updateGame(Game &game, const SDL_Event &event, SDL_Rect replay , Graphic &g
         }
     } while (movePossible && direction >=0);
     if (canAddNumber)
-        random(DEFAULT_NUM_ROWS, DEFAULT_NUM_COLS, a[rand() % 4], game);
+        random(game.nRows, game.nCols, a[rand() % 4], game);
 
 }
 
-void drawEndGame(Game &game,Graphic &g , SDL_Rect replay)
+void drawEndGame(Game &game,Graphic &g , SDL_Rect replay ,SDL_Rect result)
 {
     if(game.state!=GAME_PLAYING)
     {
@@ -436,7 +498,7 @@ void drawEndGame(Game &game,Graphic &g , SDL_Rect replay)
             g.textEnd=SDL_CreateTextureFromSurface(g.renderer, textEndBefore);
         }
         SDL_FreeSurface(textEndBefore);
-        SDL_RenderCopy(g.renderer,g.textEnd,NULL,&Result);
+        SDL_RenderCopy(g.renderer,g.textEnd,NULL,&result);
         SDL_RenderCopy(g.renderer,g.replayIMG,NULL,&replay);
     }
 
@@ -447,11 +509,11 @@ void check(Game &game)
     bool check=false; // Check win
     bool checkEquals=false; // Check cac so bang nhau canh nhau
     bool checkZero=false; // Check con o blank nao khong
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < game.nRows; i++)
     {
-        for (int j = 0; j < 4; j++)
+        for (int j = 0; j < game.nCols; j++)
         {
-            if (game.cells[i][j] == 2048) {game.state = GAME_WON; check=true;} // Neu xuat hien 2048 la Win
+            if (game.cells[i][j] == 2048) {game.state = GAME_WON;check=true;}
             else
             {
                 if(game.cells[i][j]==0) checkZero=true;
@@ -461,9 +523,17 @@ void check(Game &game)
         }
         if(check || checkZero || checkEquals) break;
     }
-    if(!checkZero && !checkEquals && !check) game.state = GAME_LOSE;
+    if(!checkZero && !checkEquals && !check) game.state=GAME_LOSE;
 }
 
-void err(const string &m) {
+void drawMenuStart(Graphic &g ,SDL_Rect start,SDL_Rect exit , SDL_Rect background)
+{
+    SDL_RenderCopy(g.renderer,g.background,NULL,&background);
+    SDL_RenderCopy(g.renderer,g.start,NULL,&start);
+    SDL_RenderCopy(g.renderer,g.exit,NULL,&exit);
+}
+
+void err(const string &m)
+{
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", m.c_str(), NULL);
 }
